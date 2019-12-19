@@ -1,10 +1,10 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.16)
 
 if(CMAKE_EXECUTABLE_SUFFIX)
   set(CMAKE_EXECUTABLE_SUFFIX_TMP ${CMAKE_EXECUTABLE_SUFFIX})
 endif()
 
-project(libjpeg-turbo C)
+project(libjpeg-turbo VERSION 2.0.3 LANGUAGES C)
 set(VERSION 2.0.3)
 string(REPLACE "." ";" VERSION_TRIPLET ${VERSION})
 list(GET VERSION_TRIPLET 0 VERSION_MAJOR)
@@ -39,31 +39,12 @@ message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 message(STATUS "VERSION = ${VERSION}, BUILD = ${BUILD}")
 
 # Detect CPU type and whether we're building 64-bit or 32-bit code
-math(EXPR BITS "${CMAKE_SIZEOF_VOID_P} * 8")
-string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} CMAKE_SYSTEM_PROCESSOR_LC)
-if(CMAKE_SYSTEM_PROCESSOR_LC MATCHES "x86_64" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "amd64" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "i[0-9]86" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "x86" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "ia32")
-  if(BITS EQUAL 64)
+if(CMAKE_GENERATOR_PLATFORM MATCHES "x64")
     set(CPU_TYPE x86_64)
-  else()
+elseif(CMAKE_GENERATOR_PLATFORM MATCHES "win32")
     set(CPU_TYPE i386)
-  endif()
-  if(NOT CMAKE_SYSTEM_PROCESSOR STREQUAL ${CPU_TYPE})
-    set(CMAKE_SYSTEM_PROCESSOR ${CPU_TYPE})
-  endif()
-elseif(CMAKE_SYSTEM_PROCESSOR_LC STREQUAL "aarch64" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "arm*64*")
-  set(CPU_TYPE arm64)
-elseif(CMAKE_SYSTEM_PROCESSOR_LC MATCHES "arm*")
-  set(CPU_TYPE arm)
-elseif(CMAKE_SYSTEM_PROCESSOR_LC MATCHES "ppc*" OR
-  CMAKE_SYSTEM_PROCESSOR_LC MATCHES "powerpc*")
-  set(CPU_TYPE powerpc)
 else()
-  set(CPU_TYPE ${CMAKE_SYSTEM_PROCESSOR_LC})
+  set(CPU_TYPE ${CMAKE_GENERATOR_PLATFORM})
 endif()
 message(STATUS "${BITS}-bit build (${CPU_TYPE})")
 
@@ -557,6 +538,17 @@ if(ENABLE_STATIC)
   if(NOT MSVC)
     set_target_properties(jpeg-static PROPERTIES OUTPUT_NAME jpeg)
   endif()
+    set_target_properties(jpeg-static PROPERTIES
+      COMPILE_PDB_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+      COMPILE_PDB_NAME jpeg-static
+      COMPILE_PDB_NAME_DEBUG jpeg-staticd
+    )
+    target_compile_options(jpeg-static PRIVATE /MP /sdl-)
+    target_link_options(jpeg-static PRIVATE /INCREMENTAL:NO /debug:full)
+    target_include_directories(jpeg-static
+      INTERFACE
+        $<INSTALL_INTERFACE:include>
+    )
 endif()
 
 if(WITH_TURBOJPEG)
@@ -615,6 +607,13 @@ if(WITH_TURBOJPEG)
     if(NOT MSVC)
       set_target_properties(turbojpeg-static PROPERTIES OUTPUT_NAME turbojpeg)
     endif()
+    set_target_properties(turbojpeg-static PROPERTIES
+      COMPILE_PDB_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+      COMPILE_PDB_NAME turbojpeg-static
+      COMPILE_PDB_NAME_DEBUG turbojpeg-staticd
+    )
+    target_compile_options(turbojpeg-static PRIVATE /MP /sdl-)
+    target_link_options(turbojpeg-static PRIVATE /INCREMENTAL:NO /debug:full)
 
     add_executable(tjunittest-static tjunittest.c tjutil.c md5/md5.c
       md5/md5hl.c)
@@ -1337,7 +1336,7 @@ set(EXE ${CMAKE_EXECUTABLE_SUFFIX})
 
 if(WITH_TURBOJPEG)
   if(ENABLE_SHARED)
-    install(TARGETS turbojpeg tjbench
+    install(TARGETS turbojpeg EXPORT ${PROJECT_NAME}
       ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
       RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -1348,16 +1347,24 @@ if(WITH_TURBOJPEG)
     endif()
   endif()
   if(ENABLE_STATIC)
-    install(TARGETS turbojpeg-static ARCHIVE
-      DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(TARGETS turbojpeg-static EXPORT ${PROJECT_NAME}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(FILES ${PROJECT_BINARY_DIR}/RelWithDebInfo/turbojpeg-static.pdb
+      DESTINATION lib
+      CONFIGURATIONS RelWithDebInfo
+    )
+    install(FILES ${PROJECT_BINARY_DIR}/Debug/turbojpeg-staticd.pdb
+      DESTINATION lib
+      CONFIGURATIONS Debug
+    )
     if(NOT ENABLE_SHARED)
       if(MSVC_IDE OR XCODE)
         set(DIR "${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}")
       else()
         set(DIR ${CMAKE_CURRENT_BINARY_DIR})
       endif()
-      install(PROGRAMS ${DIR}/tjbench-static${EXE}
-        DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME tjbench${EXE})
+      # install(PROGRAMS ${DIR}/tjbench-static${EXE}
+      #   DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME tjbench${EXE})
     endif()
   endif()
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/turbojpeg.h
@@ -1365,31 +1372,72 @@ if(WITH_TURBOJPEG)
 endif()
 
 if(ENABLE_STATIC)
-  install(TARGETS jpeg-static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(TARGETS jpeg-static EXPORT jpeg-static
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(FILES ${PROJECT_BINARY_DIR}/RelWithDebInfo/jpeg-static.pdb
+      DESTINATION lib
+      CONFIGURATIONS RelWithDebInfo
+    )
+    install(FILES ${PROJECT_BINARY_DIR}/Debug/jpeg-staticd.pdb
+      DESTINATION lib
+      CONFIGURATIONS Debug
+    )
   if(NOT ENABLE_SHARED)
     if(MSVC_IDE OR XCODE)
       set(DIR "${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}")
     else()
       set(DIR ${CMAKE_CURRENT_BINARY_DIR})
     endif()
-    install(PROGRAMS ${DIR}/cjpeg-static${EXE}
-      DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME cjpeg${EXE})
-    install(PROGRAMS ${DIR}/djpeg-static${EXE}
-      DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME djpeg${EXE})
-    install(PROGRAMS ${DIR}/jpegtran-static${EXE}
-      DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME jpegtran${EXE})
+    # install(PROGRAMS ${DIR}/cjpeg-static${EXE}
+    #   DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME cjpeg${EXE})
+    # install(PROGRAMS ${DIR}/djpeg-static${EXE}
+    #   DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME djpeg${EXE})
+    # install(PROGRAMS ${DIR}/jpegtran-static${EXE}
+    #   DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME jpegtran${EXE})
   endif()
 endif()
 
-install(TARGETS rdjpgcom wrjpgcom RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+  VERSION ${${PROJECT_NAME}_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.ijg
-  ${CMAKE_CURRENT_SOURCE_DIR}/README.md ${CMAKE_CURRENT_SOURCE_DIR}/example.txt
-  ${CMAKE_CURRENT_SOURCE_DIR}/tjexample.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg.txt
-  ${CMAKE_CURRENT_SOURCE_DIR}/structure.txt
-  ${CMAKE_CURRENT_SOURCE_DIR}/usage.txt ${CMAKE_CURRENT_SOURCE_DIR}/wizard.txt
-  ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install(EXPORT ${PROJECT_NAME}
+  FILE
+    ${PROJECT_NAME}.cmake
+  NAMESPACE
+    ${PROJECT_NAME}::
+  DESTINATION
+    lib/cmake/${PROJECT_NAME}
+)
+install(EXPORT jpeg-static
+  FILE
+    ${PROJECT_NAME}.cmake
+  NAMESPACE
+    ${PROJECT_NAME}::
+  DESTINATION
+    lib/cmake/${PROJECT_NAME}
+)
+
+install(
+  FILES
+    cmake/${PROJECT_NAME}-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+  DESTINATION
+    lib/cmake/${PROJECT_NAME}
+)
+
+# install(TARGETS rdjpgcom wrjpgcom RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/README.ijg
+#   ${CMAKE_CURRENT_SOURCE_DIR}/README.md ${CMAKE_CURRENT_SOURCE_DIR}/example.txt
+#   ${CMAKE_CURRENT_SOURCE_DIR}/tjexample.c
+#   ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg.txt
+#   ${CMAKE_CURRENT_SOURCE_DIR}/structure.txt
+#   ${CMAKE_CURRENT_SOURCE_DIR}/usage.txt ${CMAKE_CURRENT_SOURCE_DIR}/wizard.txt
+#   ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 if(WITH_JAVA)
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/java/TJExample.java
     DESTINATION ${CMAKE_INSTALL_DOCDIR})
